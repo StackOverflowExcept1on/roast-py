@@ -78,10 +78,19 @@ class Coordinator:
             if s_i is not None:
                 ctx_run_id, ctx = cached_ctx_queue.get()
                 # Discard queue items from previous runs
-                while ctx_run_id != run_id:
+                with self.run_id.get_lock():
+                    run_id_value = self.run_id.value
+                while ctx_run_id != run_id_value:
                     ctx_run_id, ctx = cached_ctx_queue.get()
+                    with self.run_id.get_lock():
+                        run_id_value = self.run_id.value
                 share_is_valid = share_val(ctx, i, s_i)
             data = i, s_i, pre_i, share_is_valid
+            # Ignore incoming messages from wrong run_id
+            with self.run_id.get_lock():
+                if run_id != self.run_id.value:
+                    logging.debug(f'Ignoring incoming message from previous run (message run_id = {run_id}, my run_id = {self.run_id.value})')
+                    continue
             self.queue_action(ActionType.INCOMING, data)
 
     def send_outgoing_loop(self):
